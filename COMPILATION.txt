@@ -1,0 +1,1 @@
+Macintosh and *Nix based systems should have gcc installed by default. Simply run "build" and run the generated executable "coneImage". Please report any compilation issues to Nathanael and nobody else.
