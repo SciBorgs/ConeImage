@@ -1,9 +1,11 @@
 #include "stdio.h"
 #include "stdlib.h"
+#include "math.h"
 
 #define SDL_MAIN_HANDLED
 #include "include/SDL2/SDL.h"
 #include "include/SDL2/SDL_image.h"
+#include "include/cglm/cglm.h" //compiling this took longer than I would like to admit
 #include "glad/glad.h"
 
 //add meta
@@ -17,8 +19,10 @@ struct GLVertex
 {
     float x, y, z;        // Vertex
     float r, g, b;     // Color (for cone since it's simplier like this when I random gen)
+    float nx, yz, nz; //normal vec; perp to face for lighting calculation
 };
 
+void UpdateLight(vec3 pos, vec3 color, GLuint pog);
 char* ReadBytes(char* path);
 void ScreenShot();
 SDL_Surface* flip_surface(SDL_Surface* surface);
@@ -44,8 +48,8 @@ int main(void){
   if(!(gladLoadGL())) //NOTE TO SELF: NEVER PUT THIS BEFORE SDL_GL_CreateContext; THREE HOURS DEBUGGING
     printf("Failed to initilize opengl");
 	
+  GLuint program = glCreateProgram();
 	{//compile shaders and enable-- boilerplate
-				GLuint program = glCreateProgram();
 				char* tmp = ReadBytes(PATH_VERTEX_SHADER);
 				GLuint vertexShader  = glCreateShader(GL_VERTEX_SHADER);
 				glShaderSource(vertexShader, 1, &tmp, NULL);
@@ -61,6 +65,31 @@ int main(void){
 				glLinkProgram(program);
 				glUseProgram(program);
 	}
+	//set uniform up
+  mat4 model, view, projection; //model is cone rot and pos, view is camera angle, projection is perspective for this
+	glm_mat4_identity(model); glm_mat4_identity(view); glm_mat4_identity(projection);
+	glm_translate_make(model,(vec3){0,0,-10});
+	vec3 zenith, zero, up;
+	{ //new stack frame because of tmp vars
+  glm_vec3_zero(zero); glm_vec3_zero(zenith); glm_vec3_zero(up);
+  zenith[2] = -1;
+	printf("{%f,%f,%f}\n", zenith[0], zenith[1], zenith[2]);
+  up[1] = 1; //up vec
+	glm_perspective_default(WINDOW_WIDTH / WINDOW_HEIGHT, projection);
+	glm_look(zero, zenith, up, view);
+	}
+	
+  GLuint locModel = 0, locView = 0, locProjection = 0;
+  locModel = glGetUniformLocation(program, "model");
+  locView = glGetUniformLocation(program, "view");
+  locProjection = glGetUniformLocation(program, "projection");
+	glUniformMatrix4fv(locModel,1,GL_FALSE,model);
+  glUniformMatrix4fv(locView,1,GL_FALSE,view);
+  glUniformMatrix4fv(locProjection,1,GL_FALSE,projection);
+
+	UpdateLight((vec3){0,2,-3},(vec3){0.1,0.1,0.5},program);
+	
+	glEnable(GL_DEPTH_TEST);  //so that 3d works like you would expect
 	//gen custom texture buffer to use for "screenshots"
 	GLuint frameBufferTexture;
 	glGenTextures(1, &frameBufferTexture);
@@ -77,20 +106,23 @@ int main(void){
 	glBindBuffer(GL_ARRAY_BUFFER, ARRAYS_BUF); //prob never gonna be unbound since we keeping it simple
 	
 	clientBuffer = calloc(sizeof(struct GLVertex),3); //allocate on heap just to be safe
-	clientBuffer[0] = (struct GLVertex){0,0,0, 1,0,0}; //x,y,z   r,g,b
-	clientBuffer[1] = (struct GLVertex){0.1,0,0, 1,0,0};
-	clientBuffer[2] = (struct GLVertex){0.1,0.1,0, 1,0,0};
+	clientBuffer[0] = (struct GLVertex){0,0,0, 1,0,0, 0,0,1}; //x,y,z   r,g,b,	  n.x, n.y, n.z
+	clientBuffer[1] = (struct GLVertex){1,0,0, 1,0,0, 0,0,1};
+	clientBuffer[2] = (struct GLVertex){1,1,0, 1,0,0, 0,0,1};
 	
 	glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(struct GLVertex), clientBuffer, GL_DYNAMIC_READ); //we will use this to store the cone's model w/ color to render
 
    //vertex boiler plate-- set up that GLVertex struct with gl
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct GLVertex), NULL); //x y z part
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(struct GLVertex), 3 * sizeof(float)); //r g b part
+  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(struct GLVertex), 6 * sizeof(float)); //n.x n.y n.z part
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
+  glEnableVertexAttribArray(2);
 
-	glClearColor(0,1,0,1); //cool green
+	//glClearColor(0,1,0,1); //for testing
 	SDL_Event* even_t = calloc(sizeof(SDL_Event), 1);
+	const Uint8 *state = SDL_GetKeyboardState(NULL);
 	while(1){
 				glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 				//actual rendering happens here
@@ -103,9 +135,31 @@ int main(void){
 												return 0;
 								break;		
 				}
+				if(state[SDL_SCANCODE_W])
+								zenith[1] += 0.005;
+				if(state[SDL_SCANCODE_S])
+								zenith[1] -= 0.005;
+				if(state[SDL_SCANCODE_D])
+								zenith[0] += 0.005;
+				if(state[SDL_SCANCODE_A])
+								zenith[0] -= 0.005;
+				if(state[SDL_SCANCODE_S] || state[SDL_SCANCODE_W] || state[SDL_SCANCODE_A] || state[SDL_SCANCODE_D]){
+								glm_look(zero, zenith, up, view);
+								glUniformMatrix4fv(locView,1,GL_FALSE,view);
+				}
   }
 	}
 	return 0;
+}
+
+//mat4 ViewMatrixRotate(
+
+void UpdateLight(vec3 pos, vec3 color, GLuint pog){
+    GLuint locColor = 0, locPos = 0;
+    locPos = glGetUniformLocation(pog, "lightPos");
+    locColor = glGetUniformLocation(pog, "lightColor");
+    glUniform3f(locPos, pos[0], pos[1], pos[2]);
+    glUniform3f(locColor, color[0], color[1], color[2]);
 }
 
 char* ReadBytes(char* path){
@@ -128,13 +182,13 @@ char* ReadBytes(char* path){
     fclose(fp);
 		return out;
 }
-
+//CONSIDER: running this on a seperate thread(s) because file operations can be cumbersome
 void ScreenShot(){
     int depth = 8 + 8 + 8 + 8, /*8 red bits, 8 green bits, 8 blue bits, 8 alpha bits*/ pitch = (depth / 8) * WINDOW_WIDTH; //pitch is in bytes so div depth by 8
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
     //char name[512] = PATH_TO_OUT;
-    if(!IMG_SavePNG(flip_surface(SDL_CreateRGBSurfaceFrom(pixels, WINDOW_WIDTH, WINDOW_HEIGHT, depth, pitch, 0, 0, 0, 0)), "output/framebuf/test.png"))
+    if(IMG_SavePNG(flip_surface(SDL_CreateRGBSurfaceFrom(pixels, WINDOW_WIDTH, WINDOW_HEIGHT, depth, pitch, 0, 0, 0, 0)), "output/framebuf/test.png"))
 				printf("Failed to save PNG\n");
 }
 //At long last... it actually works -- Nathanael
