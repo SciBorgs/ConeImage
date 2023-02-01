@@ -3,11 +3,11 @@
 in vec3 outClr;
 out vec4 fragColor;
 
-float ambient = 0.1;
+float ambient = 1;
 in vec3 nnormal;
 in vec3 worldspace;
 
-uniform vec3 lightPos;  
+uniform vec3 lightPos;
 uniform vec3 lightColor;
 
 void main()
