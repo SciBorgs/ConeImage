@@ -91,6 +91,7 @@ int main(void){
   up[1] = 1; //up vec
 	glm_perspective(1.22173, WINDOW_WIDTH / WINDOW_HEIGHT, 0.2, 50000, projection);
   //glm_ortho(0,WINDOW_WIDTH,0,WINDOW_HEIGHT,0.2,5000,projection);
+					/w
 	glm_look(zero, zenith, up, view);
 	}
 	
