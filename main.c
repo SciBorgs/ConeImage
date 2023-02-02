@@ -6,6 +6,7 @@
 #include "include/SDL2/SDL.h"
 #include "include/SDL2/SDL_image.h"
 #include "include/cglm/cglm.h" //compiling this took longer than I would like to admit
+#include "include/adlib/stl.h"
 #include "glad/glad.h"
 
 //add meta
@@ -22,15 +23,6 @@ struct GLVertex
     float nx, ny, nz; //normal vec; perp to face for lighting calculation
 };
 
-struct Facet
-{
-    float normal[3];
-    float v1[3];
-    float v2[3];
-    float v3[3];
-	short a;
-};
-
 extern void UpdateLight(vec3 pos, vec3 color, GLuint pog);
 extern char* ReadBytes(char* path);
 extern void ScreenShot();
@@ -41,6 +33,7 @@ char* const PATH_TO_META = "output/meta", *const PATH_TO_OUT = "output/framebuf"
 
 unsigned char* pixels; //will increase performance if we only init this once
 struct GLVertex* cone = NULL;
+unsigned int* coneIndices = NULL;
 unsigned int coneSize = 0;
 struct GLVertex* clientBuffer; //update this to update GL_ELEMENTS_BUFFER
 //TODO: perspective, view, and model math
@@ -59,9 +52,10 @@ int main(void){
   if(!(gladLoadGL())) //NOTE TO SELF: NEVER PUT THIS BEFORE SDL_GL_CreateContext; THREE HOURS DEBUGGING
     printf("Failed to initilize opengl");
   unsigned int* ptr = ReadSTLFile("cone.STL");
-	cone = ptr[1];
-	coneSize = ptr[0];
-	free(ptr);//allocated on heap
+	cone = ptr[0];
+	coneSize = ptr[1];
+    coneIndices = ptr[2];
+  free(ptr); //was allocated on heap
   GLuint program = glCreateProgram();
 	{//compile shaders and enable-- boilerplate
 				char* tmp = ReadBytes(PATH_VERTEX_SHADER);
@@ -122,7 +116,7 @@ int main(void){
 	glGenBuffers(1, &ARRAYS_BUF);
 	glBindBuffer(GL_ARRAY_BUFFER, ARRAYS_BUF); //prob never gonna be unbound since we keeping it simple
 
-	clientBuffer = calloc(sizeof(struct GLVertex),3); //allocate on heap just to be safe
+	/*clientBuffer = calloc(sizeof(struct GLVertex),3); //allocate on heap just to be safe
 	clientBuffer[0] = (struct GLVertex){0,0,0, 1,0,0, 0,0,1}; //x,y,z   r,g,b,	  n.x, n.y, n.z
 	clientBuffer[1] = (struct GLVertex){1,0,0, 1,0,0, 0,0,1};
 	clientBuffer[2] = (struct GLVertex){1,1,0, 1,0,0, 0,0,1}; //debug*/
@@ -136,15 +130,17 @@ int main(void){
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
   glEnableVertexAttribArray(2);
-
 	//glClearColor(0,1,0,1); //for testing
+	glDisable(GL_CULL_FACE); //be sure to disable this later
 	SDL_Event* even_t = calloc(sizeof(SDL_Event), 1);
 	const Uint8 *state = SDL_GetKeyboardState(NULL);
 	float offx = 0, offy = 0, offz = 0;
 	while(1){
 				glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 				//actual rendering happens here
-				glDrawArrays(GL_TRIANGLES, 0, coneSize * 3);
+				glDrawArrays(GL_TRIANGLE_STRIP, 0, coneSize * 3);
+				glDrawArrays(GL_TRIANGLE_STRIP, 1, coneSize * 3);
+				glDrawArrays(GL_TRIANGLE_STRIP, 2, coneSize * 3);
 				SDL_GL_SwapWindow(window);
 				while (SDL_PollEvent(even_t)){
 				switch(even_t->type){
@@ -255,77 +251,34 @@ SDL_Surface* flip_surface(SDL_Surface* surface)
 		return surface;
 }
 //use this https://github.com/admesh/admesh/blob/master/src/stl_io.c
+//okay done (yes i was talking to myself)
 unsigned int* ReadSTLFile(const char* filename){
-				unsigned char* bytes = ReadBytes(filename);
-				unsigned int i = 80, srt = i + 4; //we start reading at byte 80 to skip needless header
-				unsigned char* integer = calloc(sizeof(char),4);
-				integer[0] = bytes[i]; //memcpy? what is that? -- Nathanael
-				integer[1] = bytes[i + 1];
-				integer[2] = bytes[i + 2];
-				integer[3] = bytes[i + 3];
-				unsigned int sz = *((unsigned int*)integer);
-				printf("%d\n",sz);
-				free(integer);
-			    /* this was stupid ignorefor(i = srt; (i - srt) < (sz * 50); i += 50){
-								struct Facet* cur = out + (i - srt) / 50;
-								//printf("before: {%f,%f,%f}\n",cur->v1[0],cur->v1[1],cur->v1[2]);
-								int stride = sizeof(float) * 3;
-								//memcpy(cur,bytes + i, sizeof(struct Facet));
-								//printf("after: {%f,%f,%f}\n",cur->v1[0],cur->v1[1],cur->v1[2]);
-								int cnt = 0;
-								{
-								LOAD:
-								asm("NOP");
-								int init = i + cnt * stride;
-								for(int offset = init; (offset - init) < stride; offset += sizeof(float)){
-								for(int bytenum = 0; bytenum < sizeof(float); bytenum++)
-												((char*)(cur->normal + (offset - i) / sizeof(float)))[bytenum] = *(bytes + offset + bytenum);
-								}}
-								if(cnt < 3){cnt++; goto LOAD;}
-				}*/
-				for(i = srt; i < sz * sizeof(struct Facet); i += sizeof(struct Facet)){
-					int sum = 0;
-					for(int tma = i; tma < i + sizeof(struct Facet); tma++){
-					sum += bytes[tma];
-					}
-					if(!sum){
-						sz = (i - srt) / sizeof(struct Facet);
-						break;
-					}
-				}
-				printf("%d\n",sz);
-				struct Facet* out = calloc(sizeof(struct Facet), sz);
-				struct GLVertex* actualOut = calloc(sizeof(struct GLVertex), sz * 3);
-				memcpy(out, bytes + srt, sz * sizeof(struct Facet));
-				free(bytes);
-				for(i = 0; i < sz; ++i){
-				struct Facet cur = out[i];
-				actualOut[i].x = cur.v1[0];
-				actualOut[i].y = cur.v1[1];
-				actualOut[i].z = cur.v1[2];
-
-				actualOut[i + 1].x = cur.v2[0];
-				actualOut[i + 1].y = cur.v2[1];
-				actualOut[i + 1].z = cur.v2[2];
-
-				actualOut[i + 2].x = cur.v3[0];
-				actualOut[i + 2].y = cur.v3[1];
-				actualOut[i + 2].z = cur.v3[2];
-
-				for(int j = 0; j < 3; j++){
-				actualOut[i + j].nx = cur.normal[0];
-				actualOut[i + j].ny = cur.normal[1];
-				actualOut[i + j].nz = cur.normal[2];
-
-				actualOut[i + j].r = 1;
-				actualOut[i + j].g = 0;
-				actualOut[i + j].b = 0;
-				}}
-				for(int tmpt = 0; tmpt < sz * 3; tmpt++)
-				printf("%f %f %f\n",actualOut[tmpt].x, actualOut[tmpt].y, actualOut[tmpt].z);
-				//welcome to C
-				unsigned int* a = calloc(8,1);
-				a[0] = sz;
-				a[1] = actualOut;
-				return a;
+	stl_file fp;
+	stl_open(&fp, "cone.stl");
+	//stl_verify_neighbors(%fp);
+	//stl_fill_holes(&fp);
+	//do ops here
+	long size = fp.stats.number_of_facets;
+	printf("size: %d\n",size);
+	struct GLVertex* verts = calloc(sizeof(struct GLVertex), size * 3 + 3);
+	unsigned int* indices = calloc(sizeof(int),size * 3 + 3);
+	for(int i = 0; i < size; ++i){
+		stl_facet* cur = fp.facet_start + i;
+		for(int j = 0; j < 3; ++j){
+			//indices[i + j] = fp.v_indices[i].vertex[j];
+			verts[i + j].x = cur->vertex[j].x;
+			verts[i + j].y = cur->vertex[j].y;
+			verts[i + j].z = cur->vertex[j].z;
+			verts[i + j].nx = cur->normal.x;
+			verts[i + j].ny = cur->normal.y;
+			verts[i + j].nz = cur->normal.z;
+			verts[i + j].r = 1;
+		}
+	}
+	stl_close(&fp);
+	unsigned int* a = calloc(sizeof(int),3);
+	a[0] = verts;
+	a[1] = size;
+	a[2] = indices;
+	return a;
 }
