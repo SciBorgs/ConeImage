@@ -29,12 +29,17 @@ extern void ScreenShot();
 extern unsigned int* ReadSTLFile(const char* filename);
 extern SDL_Surface* flip_surface(SDL_Surface* surface);
 
-char* const PATH_TO_META = "output/meta", *const PATH_TO_OUT = "output/framebuf", *const PATH_FRAGMENT_SHADER = "shaders/frag.shader", *const PATH_VERTEX_SHADER = "shaders/vert.shader";
+char* const PATH_TO_META = "output/meta/", *const PATH_TO_OUT = "output/framebuf/", *const PATH_FRAGMENT_SHADER = "shaders/frag.shader", *const PATH_VERTEX_SHADER = "shaders/vert.shader";
 
 unsigned char* pixels; //will increase performance if we only init this once
 struct GLVertex* cone = NULL;
 unsigned int* coneIndices = NULL;
 unsigned int coneSize = 0;
+
+int current = 0;
+
+//debug
+//btw dont forget to disable -g before relaease!
 struct GLVertex* clientBuffer; //update this to update GL_ELEMENTS_BUFFER
 //TODO: perspective, view, and model math
 SDL_Window* window = NULL;
@@ -131,16 +136,16 @@ int main(void){
 	glEnableVertexAttribArray(1);
   glEnableVertexAttribArray(2);
 	//glClearColor(0,1,0,1); //for testing
-	glDisable(GL_CULL_FACE); //be sure to disable this later
+	//glDisable(GL_CULL_FACE); //be sure to disable this later
 	SDL_Event* even_t = calloc(sizeof(SDL_Event), 1);
 	const Uint8 *state = SDL_GetKeyboardState(NULL);
 	float offx = 0, offy = 0, offz = 0;
 	while(1){
 				glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 				//actual rendering happens here
-				glDrawArrays(GL_TRIANGLE_STRIP, 0, coneSize * 3);
-				glDrawArrays(GL_TRIANGLE_STRIP, 1, coneSize * 3);
-				glDrawArrays(GL_TRIANGLE_STRIP, 2, coneSize * 3);
+				glDrawArrays(GL_TRIANGLES, 0, coneSize * 3);
+				//glDrawArrays(GL_TRIANGLE_STRIP, 1, coneSize * 3);
+				//glDrawArrays(GL_TRIANGLE_STRIP, 2, coneSize * 3);
 				SDL_GL_SwapWindow(window);
 				while (SDL_PollEvent(even_t)){
 				switch(even_t->type){
@@ -195,7 +200,7 @@ void UpdateLight(vec3 pos, vec3 color, GLuint pog){
     glUniform3f(locPos, pos[0], pos[1], pos[2]);
     glUniform3f(locColor, color[0], color[1], color[2]);
 }
-
+//yes C# has rubbed off on me... yes i know its bad
 char* ReadBytes(char* path){
     FILE *fp = fopen(path, "r");
     if (fp == NULL)
@@ -221,9 +226,21 @@ void ScreenShot(){
     int depth = 8 + 8 + 8 + 8, /*8 red bits, 8 green bits, 8 blue bits, 8 alpha bits*/ pitch = (depth / 8) * WINDOW_WIDTH; //pitch is in bytes so div depth by 8
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
-    //char name[512] = PATH_TO_OUT;
-    if(IMG_SavePNG(flip_surface(SDL_CreateRGBSurfaceFrom(pixels, WINDOW_WIDTH, WINDOW_HEIGHT, depth, pitch, 0, 0, 0, 0)), "output/framebuf/test.png"))
-				printf("Failed to save PNG\n");
+    char name[512];
+	memcpy(name, PATH_TO_OUT, 16); //i love magic!
+	sprintf(name + 16, "%d.png\0", current);
+	printf("name1=%s",name);
+    if(IMG_SavePNG(flip_surface(SDL_CreateRGBSurfaceFrom(pixels, WINDOW_WIDTH, WINDOW_HEIGHT, depth, pitch, 0, 0, 0, 0)), name))
+				printf("Failed to save PNG for iteration %s\n", current);
+	//write meta file
+	memcpy(name, PATH_TO_META, 12);
+	sprintf(name + 12, "%d.txt\0", current);
+	printf("name2=%s\n",name);
+	FILE* fp = fopen(name, "w");
+	fprintf(fp,"test");
+	fclose(fp);
+	//incremeant current for next iteration
+	current++;
 }
 //At long last... it actually works -- Nathanael
 SDL_Surface* flip_surface(SDL_Surface* surface)
@@ -276,6 +293,7 @@ unsigned int* ReadSTLFile(const char* filename){
 		}
 	}
 	stl_close(&fp);
+	//welcome to C
 	unsigned int* a = calloc(sizeof(int),3);
 	a[0] = verts;
 	a[1] = size;
