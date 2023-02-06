@@ -14,6 +14,8 @@
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
 #define WINDOW_SPECIAL_OFFSET 100 //this is for me since I keep my taskbar at the top so I need to make sure the window doesn't generate in the taskbar - Nathanael
+#define SCALE_DIV_FACTOR 10.0
+#define ITER_FACTOR 5
 
 //this is a model of each "vertex" that will be passed to the vertex shader, makes life easier when setting up with the glVertexAttribPointer proc
 struct GLVertex
@@ -25,7 +27,7 @@ struct GLVertex
 
 extern void UpdateLight(vec3 pos, vec3 color, GLuint pog);
 extern char* ReadBytes(char* path);
-extern void ScreenShot();
+extern void ScreenShot(vec3 angle, vec3 location, vec3 color);
 extern unsigned int* ReadSTLFile(const char* filename);
 extern SDL_Surface* flip_surface(SDL_Surface* surface);
 
@@ -82,7 +84,7 @@ int main(void){
 	//set uniform up
   mat4 model, view, projection; //model is cone rot and pos, view is camera angle, projection is perspective for this
 	glm_mat4_identity(model); glm_mat4_identity(view); glm_mat4_identity(projection);
-	glm_translate_make(model,(vec3){0,0,-100});
+	glm_translate_make(model,(vec3){-15,-15,-45});
 	vec3 zenith, zero, up;
 	{ //new stack frame because of tmp vars
   glm_vec3_zero(zero); glm_vec3_zero(zenith); glm_vec3_zero(up);
@@ -94,15 +96,14 @@ int main(void){
 	glm_look(zero, zenith, up, view);
 	}
 
-  GLuint locModel = 0, locView = 0, locProjection = 0;
+  GLuint locModel = 0, locView = 0, locProjection = 0, locOver = 0;
   locModel = glGetUniformLocation(program, "model");
   locView = glGetUniformLocation(program, "view");
   locProjection = glGetUniformLocation(program, "projection");
+	locOver = glGetUniformLocation(program,"coneOverride");
 	glUniformMatrix4fv(locModel,1,GL_FALSE,model);
   glUniformMatrix4fv(locView,1,GL_FALSE,view);
   glUniformMatrix4fv(locProjection,1,GL_FALSE,projection);
-
-	UpdateLight((vec3){0,0,0},(vec3){0.1,2,2.5},program);
 
 	glEnable(GL_DEPTH_TEST);  //so that 3d works like you would expect
   glDepthFunc(GL_LESS);
@@ -140,10 +141,10 @@ int main(void){
 	SDL_Event* even_t = calloc(sizeof(SDL_Event), 1);
 	const Uint8 *state = SDL_GetKeyboardState(NULL);
 	float offx = 0, offy = 0, offz = 0;
-	while(1){
+	/*while(1){ for manual debug
 				glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 				//actual rendering happens here
-				glDrawArrays(GL_TRIANGLES, 0, coneSize * 3);
+				glDrawArrays(GL_TRIANGLE_STRIP, 0, coneSize * 3);
 				//glDrawArrays(GL_TRIANGLE_STRIP, 1, coneSize * 3);
 				//glDrawArrays(GL_TRIANGLE_STRIP, 2, coneSize * 3);
 				SDL_GL_SwapWindow(window);
@@ -183,11 +184,47 @@ int main(void){
 				    if(state[SDL_SCANCODE_Z])
 										offz -= 2.5;
 						}
-				    glm_translate_make(model,(vec3){0 + offx,0 + offy,-100 + offz});
+					vec3 tmp = {-15 + offx,-15 + offy,-45 + offz};
+					printf("location:{%-+6.2f\t%-+6.2f\t%-+6.2f}\n",tmp[0],tmp[1],tmp[2]);
+				    glm_translate_make(model,tmp);
 				    glUniformMatrix4fv(locModel,1,GL_FALSE,model);
 				}
-  }
-	}
+	}*/
+	//yes
+	for(int anglex = 0; anglex < 36000; anglex += ITER_FACTOR){
+	for(int angley = 0; angley < 36000; angley += ITER_FACTOR){
+	for(int anglez = 0; anglez < 36000; anglez += ITER_FACTOR){
+	for(int locationx = -4500; locationx < 4500; locationx += ITER_FACTOR){
+	for(int locationy = -4500; locationy < 4500; locationy += ITER_FACTOR){
+	for(int locationz = -4500; locationz < 4500; locationz += ITER_FACTOR){
+	for(int colorr = 0; colorr < 100; colorr += ITER_FACTOR){
+	for(int colorg = 0; colorg < 100; colorg += ITER_FACTOR){
+	for(int colorb = 0; colorb < 100; colorb += ITER_FACTOR){
+	for(int lightr = 0; lightr < 100; lightr += ITER_FACTOR){
+	for(int lightg = 0; lightg < 100; lightg += ITER_FACTOR){
+	for(int lightb = 0; lightb < 100; lightb += ITER_FACTOR)
+	{
+			zenith[0] = locationx / 100.0; zenith[1] = locationy / 100.0; zenith[2] = locationz / 100.0; //can't be bothered
+			vec3 tmp = {locationx / 100.0,locationy / 100.0,locationz / 100.0};
+
+			glm_look(zero, zenith, up, view);
+			glUniformMatrix4fv(locView,1,GL_FALSE,view);
+			glm_translate_make(model,tmp);
+			glUniformMatrix4fv(locModel,1,GL_FALSE,model);
+
+			glUniform3f(locOver,colorr / 100.0,colorg / 100.0,colorb / 100.0);
+
+			UpdateLight((vec3){-15,-5,-45},(vec3){lightr / 100.0,lightg / 100.0,lightb / 100.0},program);
+
+			//render
+			glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+			glDrawArrays(GL_TRIANGLE_STRIP, 0, coneSize * 3);
+			SDL_GL_SwapWindow(window);
+			//so you're telling me its all negative fourty-five?
+			//always has been
+			ScreenShot((vec3){anglex / 100.0,angley / 100.0,anglez / 100.0},(vec3){locationx / 100.0,locationy / 100.0,locationz / 100.0},(vec3){colorr / 100.0,colorg / 100.0,colorb / 100.0});
+
+	}}}}}}}}}}}}
 	return 0;
 }
 
@@ -222,7 +259,7 @@ char* ReadBytes(char* path){
 		return out;
 }
 //CONSIDER: running this on a seperate thread(s) because file operations can be cumbersome
-void ScreenShot(){
+void ScreenShot(vec3 angle, vec3 location, vec3 color){
     int depth = 8 + 8 + 8 + 8, /*8 red bits, 8 green bits, 8 blue bits, 8 alpha bits*/ pitch = (depth / 8) * WINDOW_WIDTH; //pitch is in bytes so div depth by 8
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
@@ -237,7 +274,7 @@ void ScreenShot(){
 	sprintf(name + 12, "%d.txt\0", current);
 	printf("name2=%s\n",name);
 	FILE* fp = fopen(name, "w");
-	fprintf(fp,"test");
+	fprintf(fp,"%f\n%f\n%f\n%f\n%f\n%f\n%f\n%f\n%f\n",angle[0],angle[1],angle[2],location[0],location[1],location[2],color[0],color[1],color[2]);
 	fclose(fp);
 	//incremeant current for next iteration
 	current++;
@@ -283,9 +320,9 @@ unsigned int* ReadSTLFile(const char* filename){
 		stl_facet* cur = fp.facet_start + i;
 		for(int j = 0; j < 3; ++j){
 			//indices[i + j] = fp.v_indices[i].vertex[j];
-			verts[i + j].x = cur->vertex[j].x;
-			verts[i + j].y = cur->vertex[j].y;
-			verts[i + j].z = cur->vertex[j].z;
+			verts[i + j].x = cur->vertex[j].x / SCALE_DIV_FACTOR;
+			verts[i + j].y = cur->vertex[j].y / SCALE_DIV_FACTOR;
+			verts[i + j].z = cur->vertex[j].z / SCALE_DIV_FACTOR;
 			verts[i + j].nx = cur->normal.x;
 			verts[i + j].ny = cur->normal.y;
 			verts[i + j].nz = cur->normal.z;
