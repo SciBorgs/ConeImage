@@ -203,7 +203,7 @@ int main(void){
 	for(int lightr = 0; lightr < 100; lightr += ITER_FACTOR){
 	for(int lightg = 0; lightg < 100; lightg += ITER_FACTOR){
 	for(int lightb = 0; lightb < 100; lightb += ITER_FACTOR)
-	{
+	{//hi i'm bob
 			zenith[0] = locationx / 100.0; zenith[1] = locationy / 100.0; zenith[2] = locationz / 100.0; //can't be bothered
 			vec3 tmp = {locationx / 100.0,locationy / 100.0,locationz / 100.0};
 
